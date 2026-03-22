@@ -54,11 +54,10 @@ if (jsonMode) {
         console.log(JSON.stringify({
           date: dateArg,
           day: dayName,
-          slots: daySlots.map((s: any) => ({
+          slots: daySlots.filter((s: any) => s.stock > 0).map((s: any) => ({
             start: s.startTime,
             end: s.endTime,
             stock: s.stock,
-            available: s.stock > 0,
             price: s.activity_color === "#00BEC3" ? 36 : 48,
             type: s.activity_color === "#00BEC3" ? "HC" : "HP",
           })),
