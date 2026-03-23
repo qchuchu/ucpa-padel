@@ -85,62 +85,16 @@ function addDays(d: Date, n: number): Date {
   return result;
 }
 
-function DateInput({ onSubmit }: { onSubmit: (date: string) => void }) {
-  const [selected, setSelected] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  });
-
-  useInput((_ch, key) => {
-    if (key.return) {
-      onSubmit(toDateStr(selected));
-    } else if (key.rightArrow) {
-      setSelected((d) => addDays(d, 1));
-    } else if (key.leftArrow) {
-      setSelected((d) => {
-        const prev = addDays(d, -1);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return prev < today ? d : prev;
-      });
-    } else if (key.downArrow) {
-      setSelected((d) => addDays(d, 7));
-    } else if (key.upArrow) {
-      setSelected((d) => {
-        const prev = addDays(d, -7);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return prev < today ? today : prev;
-      });
-    }
-  });
-
-  const dayName = DAYS_OF_WEEK[(selected.getDay() + 6) % 7];
-  const dateStr = toDateStr(selected);
-
-  return (
-    <Box flexDirection="column">
-      <Box>
-        <Text bold color="cyan">{"📅 "}</Text>
-        <Text bold color="yellow">{dayName} {dateStr}</Text>
-      </Box>
-      <Text color="gray">{"   ← → jour   ↑ ↓ semaine   ⏎ valider"}</Text>
-    </Box>
-  );
-}
-
 function App() {
-  const [step, setStep] = useState<"date" | "loading" | "slot" | "result">("date");
-  const [date, setDate] = useState("");
+  const today = toDateStr(new Date());
+  const [step, setStep] = useState<"loading" | "slot" | "result">("loading");
+  const [date, setDate] = useState(today);
   const [error, setError] = useState<string | null>(null);
   const [slots, setSlots] = useState<any[]>([]);
   const [result, setResult] = useState<{ slot: any; url: string } | null>(null);
 
-  const dateObj = date ? new Date(date + "T00:00:00") : null;
-  const dayName =
-    dateObj && !isNaN(dateObj.getTime())
-      ? DAYS_OF_WEEK[(dateObj.getDay() + 6) % 7]
-      : null;
+  const dateObj = new Date(date + "T00:00:00");
+  const dayName = DAYS_OF_WEEK[(dateObj.getDay() + 6) % 7];
 
   const loadDate = async (dateStr: string) => {
     setDate(dateStr);
@@ -154,30 +108,36 @@ function App() {
       setStep("slot");
     } catch (e: any) {
       setError(e.message);
-      setStep("date");
+      setStep("loading");
     }
   };
 
-  useInput((_ch, key) => {
+  useEffect(() => {
+    loadDate(today);
+  }, []);
+
+  useInput((ch, key) => {
     if (step === "result" && (key.backspace || key.delete || key.escape)) {
       loadDate(date);
       return;
     }
-    if (step !== "slot") return;
-    if (key.leftArrow || key.rightArrow) {
+    if (step !== "slot" && step !== "loading") return;
+
+    let delta = 0;
+    if (key.leftArrow) delta = -1;
+    else if (key.rightArrow) delta = 1;
+    else if (ch === "p") delta = -7;
+    else if (ch === "n") delta = 7;
+
+    if (delta !== 0) {
       const current = new Date(date + "T00:00:00");
-      const delta = key.rightArrow ? 1 : -1;
       const next = addDays(current, delta);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (next < today) return;
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
+      if (next < todayDate) return;
       loadDate(toDateStr(next));
     }
   });
-
-  const handleDateSubmit = async (dateStr: string) => {
-    loadDate(dateStr);
-  };
 
   const handleSlotSelect = (item: { label: string; value: string }) => {
     const slot = slots.find((s: any) => s.startTime === item.value);
@@ -201,20 +161,16 @@ function App() {
         </Text>
       </Box>
 
-      {step === "date" && (
+      {step === "loading" && (
         <Box flexDirection="column">
-          <DateInput onSubmit={handleDateSubmit} />
+          <Box gap={1}>
+            <Text color="cyan"><Spinner type="dots" /></Text>
+            <Text>Chargement {dayName} {date}...</Text>
+            <Text color="gray">{"← → jour   p/n semaine"}</Text>
+          </Box>
           {error && (
             <Text color="red">{"   ⚠ "}{error}</Text>
           )}
-        </Box>
-      )}
-
-
-      {step === "loading" && (
-        <Box gap={1}>
-          <Text color="cyan"><Spinner type="dots" /></Text>
-          <Text>Chargement des créneaux...</Text>
         </Box>
       )}
 
@@ -224,7 +180,7 @@ function App() {
             <Text bold>
               {"📆 "}{dayName} {date}{" — "}{slots.length} créneaux
             </Text>
-            <Text color="gray">{"← → changer de jour"}</Text>
+            <Text color="gray">{"← → jour   p/n semaine"}</Text>
           </Box>
           <SelectInput
             items={slots.map((s: any) => ({
@@ -295,7 +251,7 @@ function App() {
           <Newline />
           <Text color="gray">🌐 Ouvert dans le navigateur !</Text>
           <Newline />
-          <Text color="gray">{"⌫ / Esc  retour aux créneaux"}</Text>
+          <Text color="gray">{"Esc  retour aux créneaux"}</Text>
         </Box>
       )}
     </Box>
