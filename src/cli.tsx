@@ -25,6 +25,7 @@ async function fetchDayAll(date: string, clubFilter: ClubKey | null = null) {
 
   const byStart = new Map<string, any[]>();
   for (const o of offers) {
+    if (o.stock === 0) continue; // UCPA reports full slots; nothing bookable → hide
     if (!byStart.has(o.start)) byStart.set(o.start, []);
     byStart.get(o.start)!.push(o);
   }
@@ -63,7 +64,7 @@ if (jsonMode) {
         const start = slotArg.replace(":", "h");
         const group = slots.find((g) => g.start === start);
         const offers = (group?.offers ?? []).filter(
-          (o: any) => o.stock > 0 && (durationArg === null || o.duration === durationArg)
+          (o: any) => durationArg === null || o.duration === durationArg
         );
         if (offers.length === 0) {
           console.error(`No available slot at ${slotArg}`);
@@ -74,14 +75,10 @@ if (jsonMode) {
         // List all slots for the day, grouped by start time
         console.log(JSON.stringify({
           ...base,
-          slots: slots
-            .map((g) => ({
-              start: g.start,
-              offers: g.offers
-                .filter((o: any) => o.stock > 0)
-                .map(({ bookingUrl, ...o }: any) => o),
-            }))
-            .filter((g) => g.offers.length > 0),
+          slots: slots.map((g) => ({
+            start: g.start,
+            offers: g.offers.map(({ bookingUrl, ...o }: any) => o),
+          })),
         }));
       }
       process.exit(0);
@@ -176,15 +173,14 @@ function App() {
 
   const handleSlotSelect = (item: { value: string }) => {
     const group = slots[Number(item.value)];
-    const available = group?.offers.filter((o: any) => o.stock > 0) ?? [];
-    if (available.length === 0) return;
+    if (!group || group.offers.length === 0) return;
 
-    if (available.length === 1) {
-      setResult(available[0]);
+    if (group.offers.length === 1) {
+      setResult(group.offers[0]);
       setStep("result");
-      openBooking(available[0]);
+      openBooking(group.offers[0]);
     } else {
-      setOffers(available);
+      setOffers(group.offers);
       setStep("offer");
     }
   };
@@ -235,24 +231,20 @@ function App() {
             itemComponent={({ label, isSelected }: { label: string; isSelected?: boolean }) => {
               const group = slots[Number(label)];
               if (!group) return null;
-              const available = group.offers.some((o: any) => o.stock > 0);
+              // one chip per club — prices/durations live in the offer picker
+              const seen = new Set<string>();
+              const chips = group.offers.filter((o: any) => !seen.has(o.club) && seen.add(o.club));
               return (
                 <Box gap={1} flexWrap="wrap">
                   <Text color={isSelected ? "yellow" : "white"}>
                     {isSelected ? "❯" : " "}
                   </Text>
-                  <Text bold={available} strikethrough={!available} color={available ? "white" : "gray"}>
+                  <Text bold color="white">
                     {group.start}
                   </Text>
-                  {group.offers.map((o: any, i: number) => (
-                    <Text
-                      key={i}
-                      color={o.stock > 0 ? offerColor(o) : "gray"}
-                      strikethrough={o.stock === 0}
-                    >
-                      {CLUBS[o.club as ClubKey].SHORT} {o.price}€
-                      {o.duration !== 60 ? `/${o.duration}min` : ""}
-                      {o.stock > 1 ? ` ×${o.stock}` : ""}
+                  {chips.map((o: any, i: number) => (
+                    <Text key={i} color={offerColor(o)}>
+                      {CLUBS[o.club as ClubKey].SHORT}
                     </Text>
                   ))}
                 </Box>
@@ -264,8 +256,7 @@ function App() {
           <Text color="gray">
             <Text color="cyan">●</Text> UCPA HC 36€{"   "}
             <Text color="red">●</Text> UCPA HP 48€{"   "}
-            <Text color="magenta">●</Text> Clubs Anybuddy{"   "}
-            <Text strikethrough color="gray">──</Text> Complet
+            <Text color="magenta">●</Text> Clubs Anybuddy
           </Text>
           {warnings.map((w) => (
             <Text key={w} color="red">{"⚠ "}{w}</Text>
