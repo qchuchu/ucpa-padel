@@ -38,6 +38,43 @@ async function fetchDayAll(date: string, clubFilter: ClubKey | null = null) {
   return { slots, errors };
 }
 
+function filterByDuration(slots: any[], want: number | null) {
+  if (!want) return slots;
+  if (want !== 120) {
+    return slots
+      .map((g) => ({ start: g.start, offers: g.offers.filter((o: any) => o.duration === want) }))
+      .filter((g) => g.offers.length > 0);
+  }
+  // 2h: direct 120min offers, or two consecutive 60min bookings at the same club
+  const byStart = new Map(slots.map((g) => [g.start, g.offers]));
+  return slots
+    .map((g) => {
+      const offers = g.offers.filter((o: any) => o.duration === 120);
+      // skip clubs with a direct 2h offer (one payment beats two); price-sorted, so first pair is cheapest
+      const seen = new Set<string>(offers.map((o: any) => o.club));
+      for (const o of g.offers) {
+        if (o.duration !== 60 || seen.has(o.club) || o.end <= o.start) continue; // no midnight wrap
+        const next = (byStart.get(o.end) ?? []).find(
+          (n: any) => n.club === o.club && n.duration === 60
+        );
+        if (!next) continue;
+        seen.add(o.club);
+        offers.push({
+          club: o.club,
+          start: o.start,
+          end: next.end,
+          duration: 120,
+          stock: Math.min(o.stock, next.stock),
+          price: o.price + next.price,
+          type: o.type === next.type ? o.type : o.type && next.type ? "HC+HP" : undefined,
+          bookingUrls: [o.bookingUrl, next.bookingUrl],
+        });
+      }
+      return { start: g.start, offers: offers.sort((a: any, b: any) => a.price - b.price) };
+    })
+    .filter((g) => g.offers.length > 0);
+}
+
 // --- Agent mode (non-interactive) ---
 const args = process.argv.slice(2);
 const jsonMode = args.includes("--json");
@@ -54,18 +91,16 @@ if (jsonMode) {
     }
 
     try {
-      const { slots, errors } = await fetchDayAll(dateArg, clubArg);
+      const { slots: allSlots, errors } = await fetchDayAll(dateArg, clubArg);
+      const slots = filterByDuration(allSlots, durationArg);
       const dateObj = new Date(dateArg + "T00:00:00");
       const dayName = DAYS_OF_WEEK[(dateObj.getDay() + 6) % 7];
       const base = { date: dateArg, day: dayName, ...(errors.length ? { errors } : {}) };
 
       if (slotArg) {
-        // Return every club's booking URL for a specific start time
+        // Return every club's booking URL(s) for a specific start time
         const start = slotArg.replace(":", "h");
-        const group = slots.find((g) => g.start === start);
-        const offers = (group?.offers ?? []).filter(
-          (o: any) => durationArg === null || o.duration === durationArg
-        );
+        const offers = slots.find((g) => g.start === start)?.offers ?? [];
         if (offers.length === 0) {
           console.error(`No available slot at ${slotArg}`);
           process.exit(1);
@@ -77,7 +112,7 @@ if (jsonMode) {
           ...base,
           slots: slots.map((g) => ({
             start: g.start,
-            offers: g.offers.map(({ bookingUrl, ...o }: any) => o),
+            offers: g.offers.map(({ bookingUrl, bookingUrls, ...o }: any) => o),
           })),
         }));
       }
@@ -109,11 +144,24 @@ function offerColor(offer: any): string {
   return "magenta";
 }
 
-function openBooking(offer: any) {
-  try {
-    execSync(`open ${JSON.stringify(offer.bookingUrl)}`);
-  } catch {}
+function bookingUrls(offer: any): string[] {
+  return offer.bookingUrls ?? [offer.bookingUrl];
 }
+
+function openBooking(offer: any) {
+  for (const url of bookingUrls(offer)) {
+    try {
+      execSync(`open ${JSON.stringify(url)}`);
+    } catch {}
+  }
+}
+
+const DURATIONS: { value: number | null; label: string }[] = [
+  { value: null, label: "tous" },
+  { value: 60, label: "1h" },
+  { value: 90, label: "1h30" },
+  { value: 120, label: "2h" },
+];
 
 function App() {
   const today = toDateStr(new Date());
@@ -124,9 +172,12 @@ function App() {
   const [slots, setSlots] = useState<any[]>([]);
   const [offers, setOffers] = useState<any[]>([]);
   const [result, setResult] = useState<any | null>(null);
+  const [durIdx, setDurIdx] = useState(0);
 
   const dateObj = new Date(date + "T00:00:00");
   const dayName = DAYS_OF_WEEK[(dateObj.getDay() + 6) % 7];
+  const duration = DURATIONS[durIdx];
+  const visible = filterByDuration(slots, duration.value);
 
   const loadDate = async (dateStr: string) => {
     setDate(dateStr);
@@ -155,6 +206,11 @@ function App() {
     }
     if (step !== "slot" && step !== "loading") return;
 
+    if (ch === "d") {
+      setDurIdx((durIdx + 1) % DURATIONS.length);
+      return;
+    }
+
     let delta = 0;
     if (key.leftArrow) delta = -1;
     else if (key.rightArrow) delta = 1;
@@ -172,7 +228,7 @@ function App() {
   });
 
   const handleSlotSelect = (item: { value: string }) => {
-    const group = slots[Number(item.value)];
+    const group = visible[Number(item.value)];
     if (!group || group.offers.length === 0) return;
 
     if (group.offers.length === 1) {
@@ -218,18 +274,27 @@ function App() {
         <Box flexDirection="column">
           <Box marginBottom={1} gap={2}>
             <Text bold>
-              {"📆 "}{dayName} {date}{" — "}{slots.length} créneaux
+              {"📆 "}{dayName} {date}{" — "}{visible.length} créneaux
             </Text>
-            <Text color="gray">{"← → jour   p/n semaine"}</Text>
+            <Text>
+              {"Durée: "}
+              {DURATIONS.map((d, i) => (
+                <Text key={d.label} color={i === durIdx ? "yellow" : "gray"} bold={i === durIdx}>
+                  {i > 0 ? " | " : ""}{d.label}
+                </Text>
+              ))}
+            </Text>
+            <Text color="gray">{"← → jour   p/n semaine   d durée"}</Text>
           </Box>
           <SelectInput
-            items={slots.map((_g: any, i: number) => ({
+            key={duration.label}
+            items={visible.map((_g: any, i: number) => ({
               label: String(i),
               value: String(i),
               key: String(i),
             }))}
             itemComponent={({ label, isSelected }: { label: string; isSelected?: boolean }) => {
-              const group = slots[Number(label)];
+              const group = visible[Number(label)];
               if (!group) return null;
               // one chip per club — prices/durations live in the offer picker
               const seen = new Set<string>();
@@ -243,9 +308,12 @@ function App() {
                     {group.start}
                   </Text>
                   {chips.map((o: any, i: number) => (
-                    <Text key={i} color={offerColor(o)}>
-                      {CLUBS[o.club as ClubKey].SHORT}
-                    </Text>
+                    <React.Fragment key={i}>
+                      {i > 0 && <Text color="gray">|</Text>}
+                      <Text color={offerColor(o)}>
+                        {CLUBS[o.club as ClubKey].SHORT}
+                      </Text>
+                    </React.Fragment>
                   ))}
                 </Box>
               );
@@ -293,7 +361,7 @@ function App() {
                     {o.stock} terrain{o.stock > 1 ? "s" : ""}
                   </Text>
                   <Text>
-                    {o.price}€{o.type ? ` (${o.type})` : ""}
+                    {o.price}€{o.type ? ` (${o.type})` : ""}{o.bookingUrls ? " · 2×1h" : ""}
                   </Text>
                 </Box>
               );
@@ -327,8 +395,13 @@ function App() {
               <Text bold>Prix : </Text>
               {result.price}€{result.type ? ` (${result.type})` : ""}
             </Text>
+            {result.bookingUrls && (
+              <Text color="yellow">⚠ 2 réservations d'1h à payer séparément</Text>
+            )}
             <Newline />
-            <Text bold color="cyan">🔗 {result.bookingUrl}</Text>
+            {bookingUrls(result).map((url: string) => (
+              <Text key={url} bold color="cyan">🔗 {url}</Text>
+            ))}
           </Box>
           <Newline />
           <Text color="gray">🌐 Ouvert dans le navigateur !</Text>
