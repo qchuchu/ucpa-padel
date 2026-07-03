@@ -60,4 +60,22 @@ export function getSlots(data, targetDate) {
   return column.items;
 }
 
+export const NAME = "UCPA Paris 19e - Rosa Parks";
+
+export async function fetchDay(date) {
+  const data = await fetchWeek(date);
+  return getSlots(data, date).map((s) => {
+    const offPeak = s.activity_color === "#00BEC3";
+    return {
+      start: s.startTime,
+      end: s.endTime,
+      duration: 60,
+      stock: s.stock,
+      price: offPeak ? 36 : 48,
+      type: offPeak ? "HC" : "HP",
+      bookingUrl: buildBookingUrl(s),
+    };
+  });
+}
+
 export { DAYS_OF_WEEK };
