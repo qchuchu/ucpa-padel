@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Padel watches",
+  "description": "List of slot watches. A watch fires a Slack notification when a newly-available slot matches ALL its criteria.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique name for this watch (used to dedupe notifications). e.g. \"weekend-eve\"."
+      },
+      "clubs": {
+        "type": "array",
+        "description": "Clubs to watch. Empty or omitted = all clubs.",
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "enum": [
+            "ucpa",
+            "trinquet",
+            "padelistes",
+            "4padel20",
+            "aquaboulevard",
+            "parispadel",
+            "padel15",
+            "sportfield16",
+            "sportfield12"
+          ],
+          "enumDescriptions": [
+            "UCPA Paris 19e - Rosa Parks",
+            "Trinquet Village - Paris 16e",
+            "Padelistes Bercy - Paris 12e",
+            "4PADEL - Paris 20e",
+            "Forest Hill Aquaboulevard - Paris 15e",
+            "Paris Padel - Paris 20e",
+            "Padel 15 - Paris 15e",
+            "Sportfield Tour Eiffel - Paris 16e",
+            "Sportfield Bercy - Paris 12e"
+          ]
+        }
+      },
+      "days": {
+        "type": "array",
+        "description": "Days of week to watch. Empty or omitted = any day.",
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "enum": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+        }
+      },
+      "from": {
+        "type": "string",
+        "description": "Earliest start time, inclusive. Format HHhMM, e.g. \"18h00\". Omit for no lower bound.",
+        "pattern": "^([01][0-9]|2[0-3])h[0-5][0-9]$"
+      },
+      "to": {
+        "type": "string",
+        "description": "Latest start time, inclusive. Format HHhMM, e.g. \"21h30\". Omit for no upper bound.",
+        "pattern": "^([01][0-9]|2[0-3])h[0-5][0-9]$"
+      },
+      "duration": {
+        "description": "Slot length(s) in minutes to match. A number, a list of numbers, or null/omitted = any duration.",
+        "oneOf": [
+          { "type": "integer", "enum": [60, 90, 120] },
+          { "type": "null" },
+          {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "integer", "enum": [60, 90, 120] }
+          }
+        ]
+      }
+    }
+  }
+}

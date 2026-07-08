@@ -1,0 +1,10 @@
+[
+  {
+    "id": "monday-trinquet-ucpa",
+    "clubs": ["trinquet", "ucpa"],
+    "days": ["lundi"],
+    "from": "20h00",
+    "to": "22h00",
+    "duration": [90, 120]
+  }
+]

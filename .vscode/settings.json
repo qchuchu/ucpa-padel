@@ -1,0 +1,8 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["watches.json"],
+      "url": "./watches.schema.json"
+    }
+  ]
+}

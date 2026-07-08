@@ -3,77 +3,9 @@ import { render, Box, Text, Newline, useInput } from "ink";
 import { execSync } from "child_process";
 import SelectInput from "ink-select-input";
 import Spinner from "ink-spinner";
-import * as ucpa from "./api.js";
-import { clubs as anybuddyClubs } from "./anybuddy.js";
-import { DAYS_OF_WEEK } from "./api.js";
+import { CLUBS, fetchDayAll, filterByDuration, DAYS_OF_WEEK } from "./slots.js";
 
-const CLUBS: Record<string, any> = {
-  ucpa: { ...ucpa, key: "ucpa", SHORT: "UCPA" },
-};
-for (const c of anybuddyClubs) CLUBS[c.key] = c;
 type ClubKey = string;
-
-async function fetchDayAll(date: string, clubFilter: ClubKey | null = null) {
-  const keys = (clubFilter ? [clubFilter] : Object.keys(CLUBS)) as ClubKey[];
-  const results = await Promise.allSettled(keys.map((k) => CLUBS[k].fetchDay(date)));
-  const offers: any[] = [];
-  const errors: string[] = [];
-  results.forEach((r, i) => {
-    if (r.status === "fulfilled") offers.push(...r.value.map((s: any) => ({ ...s, club: keys[i] })));
-    else errors.push(`${keys[i]}: ${r.reason?.message ?? r.reason}`);
-  });
-
-  const byStart = new Map<string, any[]>();
-  for (const o of offers) {
-    if (o.stock === 0) continue; // UCPA reports full slots; nothing bookable → hide
-    if (!byStart.has(o.start)) byStart.set(o.start, []);
-    byStart.get(o.start)!.push(o);
-  }
-  const slots = [...byStart.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([start, group]) => ({
-      start,
-      offers: group.sort((a, b) => a.price - b.price || a.duration - b.duration),
-    }));
-  return { slots, errors };
-}
-
-function filterByDuration(slots: any[], want: number | null) {
-  if (!want) return slots;
-  if (want !== 120) {
-    return slots
-      .map((g) => ({ start: g.start, offers: g.offers.filter((o: any) => o.duration === want) }))
-      .filter((g) => g.offers.length > 0);
-  }
-  // 2h: direct 120min offers, or two consecutive 60min bookings at the same club
-  const byStart = new Map(slots.map((g) => [g.start, g.offers]));
-  return slots
-    .map((g) => {
-      const offers = g.offers.filter((o: any) => o.duration === 120);
-      // skip clubs with a direct 2h offer (one payment beats two); price-sorted, so first pair is cheapest
-      const seen = new Set<string>(offers.map((o: any) => o.club));
-      for (const o of g.offers) {
-        if (o.duration !== 60 || seen.has(o.club) || o.end <= o.start) continue; // no midnight wrap
-        const next = (byStart.get(o.end) ?? []).find(
-          (n: any) => n.club === o.club && n.duration === 60
-        );
-        if (!next) continue;
-        seen.add(o.club);
-        offers.push({
-          club: o.club,
-          start: o.start,
-          end: next.end,
-          duration: 120,
-          stock: Math.min(o.stock, next.stock),
-          price: o.price + next.price,
-          type: o.type === next.type ? o.type : o.type && next.type ? "HC+HP" : undefined,
-          bookingUrls: [o.bookingUrl, next.bookingUrl],
-        });
-      }
-      return { start: g.start, offers: offers.sort((a: any, b: any) => a.price - b.price) };
-    })
-    .filter((g) => g.offers.length > 0);
-}
 
 // --- Agent mode (non-interactive) ---
 const args = process.argv.slice(2);
