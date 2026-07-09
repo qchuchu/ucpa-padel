@@ -52,9 +52,9 @@ function Home() {
     'padel.durations',
     [],
   )
-  const [timeWindow, setTimeWindow] = useLocalStorage<TimeWindow>(
-    'padel.window',
-    { from: null, to: null },
+  const [timeWindows, setTimeWindows] = useLocalStorage<Array<TimeWindow>>(
+    'padel.windows',
+    [],
   )
   const [columnVisibility, setColumnVisibility] =
     useLocalStorage<VisibilityState>('padel.courts', {})
@@ -75,11 +75,18 @@ function Home() {
         const startMin = toMinutes(o.start)
         let endMin = toMinutes(o.end)
         if (endMin <= startMin) endMin += 1440 // wraps past midnight
-        if (timeWindow.from != null && startMin < timeWindow.from * 60) return false
-        if (timeWindow.to != null && endMin > timeWindow.to * 60) return false
+        if (
+          timeWindows.length > 0 &&
+          !timeWindows.some(
+            (w) =>
+              (w.from == null || startMin >= w.from * 60) &&
+              (w.to == null || endMin <= w.to * 60),
+          )
+        )
+          return false
         return true
       }),
-    [offers, durations, timeWindow],
+    [offers, durations, timeWindows],
   )
 
   const rows = useMemo<Array<Row>>(() => {
@@ -130,7 +137,7 @@ function Home() {
   const hiddenCount = CLUBS.length - visibleClubs.length
   const activeFilters =
     (durations.length ? 1 : 0) +
-    (timeWindow.from != null || timeWindow.to != null ? 1 : 0) +
+    (timeWindows.some((w) => w.from != null || w.to != null) ? 1 : 0) +
     (hiddenCount > 0 ? 1 : 0)
 
   return (
@@ -177,8 +184,8 @@ function Home() {
           <FilterPanel
             durations={durations}
             setDurations={setDurations}
-            timeWindow={timeWindow}
-            setTimeWindow={setTimeWindow}
+            timeWindows={timeWindows}
+            setTimeWindows={setTimeWindows}
             columnVisibility={columnVisibility}
             setColumnVisibility={setColumnVisibility}
           />
@@ -342,8 +349,8 @@ function OfferChip({ o }: { o: Offer }) {
 function FilterPanel({
   durations,
   setDurations,
-  timeWindow,
-  setTimeWindow,
+  timeWindows,
+  setTimeWindows,
   columnVisibility,
   setColumnVisibility,
 }: {
@@ -351,9 +358,11 @@ function FilterPanel({
   setDurations: (
     updater: Array<number> | ((old: Array<number>) => Array<number>),
   ) => void
-  timeWindow: TimeWindow
-  setTimeWindow: (
-    updater: TimeWindow | ((old: TimeWindow) => TimeWindow),
+  timeWindows: Array<TimeWindow>
+  setTimeWindows: (
+    updater:
+      | Array<TimeWindow>
+      | ((old: Array<TimeWindow>) => Array<TimeWindow>),
   ) => void
   columnVisibility: VisibilityState
   setColumnVisibility: (
@@ -370,9 +379,17 @@ function FilterPanel({
     setDurations((old) =>
       old.includes(v) ? old.filter((x) => x !== v) : [...old, v],
     )
+
+  const addWindow = () =>
+    setTimeWindows((ws) => [...ws, { from: null, to: null }])
+  const updateWindow = (i: number, patch: Partial<TimeWindow>) =>
+    setTimeWindows((ws) =>
+      ws.map((w, idx) => (idx === i ? { ...w, ...patch } : w)),
+    )
+  const removeWindow = (i: number) =>
+    setTimeWindows((ws) => ws.filter((_, idx) => idx !== i))
   const selectClass =
     'rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900'
-  const hasWindow = timeWindow.from != null || timeWindow.to != null
 
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
@@ -415,57 +432,58 @@ function FilterPanel({
           Créneau horaire{' '}
           <span className="font-normal normal-case">(le créneau doit tenir dedans)</span>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-zinc-500" htmlFor="win-from">
-            de
-          </label>
-          <select
-            id="win-from"
-            value={timeWindow.from ?? ''}
-            onChange={(e) =>
-              setTimeWindow((w) => ({
-                ...w,
-                from: e.target.value === '' ? null : Number(e.target.value),
-              }))
-            }
-            className={selectClass}
+        <div className="flex flex-col gap-2">
+          {timeWindows.map((w, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <label className="text-sm text-zinc-500">de</label>
+              <select
+                value={w.from ?? ''}
+                onChange={(e) =>
+                  updateWindow(i, {
+                    from: e.target.value === '' ? null : Number(e.target.value),
+                  })
+                }
+                className={selectClass}
+              >
+                <option value="">—</option>
+                {HOUR_OPTIONS.map((h) => (
+                  <option key={h} value={h}>
+                    {h}h
+                  </option>
+                ))}
+              </select>
+              <label className="text-sm text-zinc-500">à</label>
+              <select
+                value={w.to ?? ''}
+                onChange={(e) =>
+                  updateWindow(i, {
+                    to: e.target.value === '' ? null : Number(e.target.value),
+                  })
+                }
+                className={selectClass}
+              >
+                <option value="">—</option>
+                {HOUR_OPTIONS.map((h) => (
+                  <option key={h} value={h}>
+                    {h}h
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => removeWindow(i)}
+                aria-label="Supprimer ce créneau"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 active:scale-95"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={addWindow}
+            className="self-start rounded-lg border border-dashed border-zinc-300 px-3 py-1.5 text-sm font-medium text-emerald-700 active:scale-95 dark:border-zinc-700 dark:text-emerald-400"
           >
-            <option value="">—</option>
-            {HOUR_OPTIONS.map((h) => (
-              <option key={h} value={h}>
-                {h}h
-              </option>
-            ))}
-          </select>
-          <label className="text-sm text-zinc-500" htmlFor="win-to">
-            à
-          </label>
-          <select
-            id="win-to"
-            value={timeWindow.to ?? ''}
-            onChange={(e) =>
-              setTimeWindow((w) => ({
-                ...w,
-                to: e.target.value === '' ? null : Number(e.target.value),
-              }))
-            }
-            className={selectClass}
-          >
-            <option value="">—</option>
-            {HOUR_OPTIONS.map((h) => (
-              <option key={h} value={h}>
-                {h}h
-              </option>
-            ))}
-          </select>
-          {hasWindow && (
-            <button
-              onClick={() => setTimeWindow({ from: null, to: null })}
-              className="text-sm text-zinc-500 underline active:scale-95"
-            >
-              effacer
-            </button>
-          )}
+            + ajouter un créneau
+          </button>
         </div>
       </div>
 
