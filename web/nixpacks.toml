@@ -1,8 +1,13 @@
 [phases.setup]
 nixPkgs = ["nodejs_22"]
 
+# Override the default `npm ci` (strict lockfile) with a lenient install so the
+# build isn't blocked by lockfile drift from the "latest"/nightly scaffold deps.
+[phases.install]
+cmds = ["npm install --no-audit --no-fund"]
+
 [phases.build]
-cmds = ["npm install", "npm run build"]
+cmds = ["npm run build"]
 
 [start]
 cmd = "npm run start"
