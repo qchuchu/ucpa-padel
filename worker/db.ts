@@ -15,6 +15,7 @@ export async function initSchema(): Promise<void> {
       price numeric, stock int,
       updated_at timestamptz DEFAULT now()
     );
+    ALTER TABLE slots ADD COLUMN IF NOT EXISTS booking_urls text[];
     CREATE TABLE IF NOT EXISTS slot_events (
       id bigserial PRIMARY KEY,
       slot_key text, club text, date date, start text, duration int,

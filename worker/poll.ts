@@ -80,11 +80,12 @@ export async function poll(): Promise<void> {
   // upsert current snapshot
   // ponytail: one query per slot (hundreds); batch into a multi-row insert if it gets slow
   for (const o of freshByKey.values()) {
+    const urls = o.bookingUrls ?? (o.bookingUrl ? [o.bookingUrl] : []);
     await pool.query(
-      `INSERT INTO slots (slot_key, club, date, start, duration, price, stock, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, now())
-       ON CONFLICT (slot_key) DO UPDATE SET price = $6, stock = $7, updated_at = now()`,
-      [keyOf(o), o.club, o.date, o.start, o.duration, o.price, o.stock]
+      `INSERT INTO slots (slot_key, club, date, start, duration, price, stock, booking_urls, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+       ON CONFLICT (slot_key) DO UPDATE SET price = $6, stock = $7, booking_urls = $8, updated_at = now()`,
+      [keyOf(o), o.club, o.date, o.start, o.duration, o.price, o.stock, urls]
     );
   }
 
