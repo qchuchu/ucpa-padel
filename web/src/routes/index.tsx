@@ -16,6 +16,7 @@ import {
   addDays,
   dayLabel,
   durationLabel,
+  toMinutes,
   todayParis,
 } from '../lib/date'
 import { useLocalStorage } from '../lib/useLocalStorage'
@@ -32,12 +33,14 @@ export const Route = createFileRoute('/')({
 
 type Row = { start: string; cells: Record<string, Array<Offer>> }
 
-const DURATIONS: Array<{ value: number | null; label: string }> = [
-  { value: null, label: 'Tous' },
+const DURATION_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 60, label: '1h' },
   { value: 90, label: '1h30' },
   { value: 120, label: '2h' },
 ]
+
+type TimeWindow = { from: number | null; to: number | null }
+const HOUR_OPTIONS = Array.from({ length: 19 }, (_, i) => 6 + i) // 6h..24h
 
 function Home() {
   const search = Route.useSearch()
@@ -45,9 +48,13 @@ function Home() {
   const date = search.date ?? todayParis()
   const { data: offers } = useSuspenseQuery(slotsQueryOptions(date))
 
-  const [duration, setDuration] = useLocalStorage<number | null>(
-    'padel.duration',
-    null,
+  const [durations, setDurations] = useLocalStorage<Array<number>>(
+    'padel.durations',
+    [],
+  )
+  const [timeWindow, setTimeWindow] = useLocalStorage<TimeWindow>(
+    'padel.window',
+    { from: null, to: null },
   )
   const [columnVisibility, setColumnVisibility] =
     useLocalStorage<VisibilityState>('padel.courts', {})
@@ -61,8 +68,18 @@ function Home() {
     navigate({ search: { date: addDays(date, n) }, resetScroll: false })
 
   const filtered = useMemo(
-    () => offers.filter((o) => duration == null || o.duration === duration),
-    [offers, duration],
+    () =>
+      offers.filter((o) => {
+        if (durations.length > 0 && !durations.includes(o.duration)) return false
+        // slot must fit entirely inside the window (start ≥ from AND end ≤ to)
+        const startMin = toMinutes(o.start)
+        let endMin = toMinutes(o.end)
+        if (endMin <= startMin) endMin += 1440 // wraps past midnight
+        if (timeWindow.from != null && startMin < timeWindow.from * 60) return false
+        if (timeWindow.to != null && endMin > timeWindow.to * 60) return false
+        return true
+      }),
+    [offers, durations, timeWindow],
   )
 
   const rows = useMemo<Array<Row>>(() => {
@@ -111,6 +128,10 @@ function Home() {
 
   const visibleClubs = CLUBS.filter((c) => columnVisibility[c.key] !== false)
   const hiddenCount = CLUBS.length - visibleClubs.length
+  const activeFilters =
+    (durations.length ? 1 : 0) +
+    (timeWindow.from != null || timeWindow.to != null ? 1 : 0) +
+    (hiddenCount > 0 ? 1 : 0)
 
   return (
     <div className="mx-auto min-h-screen max-w-5xl px-3 pb-16 text-zinc-900 dark:text-zinc-100">
@@ -122,9 +143,9 @@ function Home() {
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium active:scale-95 dark:border-zinc-700"
           >
             Filtres
-            {(duration != null || hiddenCount > 0) && (
+            {activeFilters > 0 && (
               <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-xs text-white">
-                {(duration != null ? 1 : 0) + (hiddenCount > 0 ? 1 : 0)}
+                {activeFilters}
               </span>
             )}
           </button>
@@ -154,8 +175,10 @@ function Home() {
 
         {showFilters && (
           <FilterPanel
-            duration={duration}
-            setDuration={setDuration}
+            durations={durations}
+            setDurations={setDurations}
+            timeWindow={timeWindow}
+            setTimeWindow={setTimeWindow}
             columnVisibility={columnVisibility}
             setColumnVisibility={setColumnVisibility}
           />
@@ -317,13 +340,21 @@ function OfferChip({ o }: { o: Offer }) {
 }
 
 function FilterPanel({
-  duration,
-  setDuration,
+  durations,
+  setDurations,
+  timeWindow,
+  setTimeWindow,
   columnVisibility,
   setColumnVisibility,
 }: {
-  duration: number | null
-  setDuration: (v: number | null) => void
+  durations: Array<number>
+  setDurations: (
+    updater: Array<number> | ((old: Array<number>) => Array<number>),
+  ) => void
+  timeWindow: TimeWindow
+  setTimeWindow: (
+    updater: TimeWindow | ((old: TimeWindow) => TimeWindow),
+  ) => void
   columnVisibility: VisibilityState
   setColumnVisibility: (
     updater: VisibilityState | ((old: VisibilityState) => VisibilityState),
@@ -335,26 +366,106 @@ function FilterPanel({
   const setAll = (visible: boolean) =>
     setColumnVisibility(Object.fromEntries(CLUBS.map((c) => [c.key, visible])))
 
+  const toggleDuration = (v: number) =>
+    setDurations((old) =>
+      old.includes(v) ? old.filter((x) => x !== v) : [...old, v],
+    )
+  const selectClass =
+    'rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900'
+  const hasWindow = timeWindow.from != null || timeWindow.to != null
+
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
       <div>
         <div className="mb-1.5 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-          Durée
+          Durée{' '}
+          <span className="font-normal normal-case">(plusieurs possibles)</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {DURATIONS.map((d) => (
+          {DURATION_OPTIONS.map((d) => {
+            const on = durations.includes(d.value)
+            return (
+              <button
+                key={d.value}
+                onClick={() => toggleDuration(d.value)}
+                aria-pressed={on}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium active:scale-95 ${
+                  on
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                }`}
+              >
+                {d.label}
+              </button>
+            )
+          })}
+          {durations.length > 0 && (
             <button
-              key={d.label}
-              onClick={() => setDuration(d.value)}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium active:scale-95 ${
-                duration === d.value
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
-              }`}
+              onClick={() => setDurations([])}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-zinc-500 underline active:scale-95"
             >
-              {d.label}
+              toutes
             </button>
-          ))}
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-1.5 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+          Créneau horaire{' '}
+          <span className="font-normal normal-case">(le créneau doit tenir dedans)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-zinc-500" htmlFor="win-from">
+            de
+          </label>
+          <select
+            id="win-from"
+            value={timeWindow.from ?? ''}
+            onChange={(e) =>
+              setTimeWindow((w) => ({
+                ...w,
+                from: e.target.value === '' ? null : Number(e.target.value),
+              }))
+            }
+            className={selectClass}
+          >
+            <option value="">—</option>
+            {HOUR_OPTIONS.map((h) => (
+              <option key={h} value={h}>
+                {h}h
+              </option>
+            ))}
+          </select>
+          <label className="text-sm text-zinc-500" htmlFor="win-to">
+            à
+          </label>
+          <select
+            id="win-to"
+            value={timeWindow.to ?? ''}
+            onChange={(e) =>
+              setTimeWindow((w) => ({
+                ...w,
+                to: e.target.value === '' ? null : Number(e.target.value),
+              }))
+            }
+            className={selectClass}
+          >
+            <option value="">—</option>
+            {HOUR_OPTIONS.map((h) => (
+              <option key={h} value={h}>
+                {h}h
+              </option>
+            ))}
+          </select>
+          {hasWindow && (
+            <button
+              onClick={() => setTimeWindow({ from: null, to: null })}
+              className="text-sm text-zinc-500 underline active:scale-95"
+            >
+              effacer
+            </button>
+          )}
         </div>
       </div>
 

@@ -40,6 +40,11 @@ export function dayLabelShort(dateStr: string): string {
   }).format(anchor(dateStr));
 }
 
+export function toMinutes(hm: string): number {
+  const [h, m] = hm.split('h').map(Number)
+  return h * 60 + (m || 0)
+}
+
 export function endTime(start: string, duration: number): string {
   const [h, m] = start.split('h').map(Number);
   const t = h * 60 + m + duration;
