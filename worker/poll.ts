@@ -66,7 +66,16 @@ async function logEvent(event: string, o: any, key: string): Promise<void> {
   );
 }
 
+async function purgePast(): Promise<void> {
+  // A past date leaves the horizon, so poll() never re-scans it and never diffs it away.
+  // ponytail: seq scan each run; add an index on (date) if these tables ever get big enough to feel it
+  const { rowCount } = await pool.query("DELETE FROM slot_events WHERE date < current_date");
+  await pool.query("DELETE FROM slots WHERE date < current_date");
+  if (rowCount) console.log(`[purge] dropped ${rowCount} events for past dates`);
+}
+
 export async function poll(): Promise<void> {
+  await purgePast();
   const dates = horizonDates();
   const { offers: fresh, scanned } = await fetchAvailable(dates);
   const freshByKey = new Map(fresh.map((o) => [keyOf(o), o]));
