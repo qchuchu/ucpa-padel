@@ -6,5 +6,5 @@ export const slotsQueryOptions = (date: string) =>
     queryKey: ['slots', date],
     queryFn: () => getSlotsForDate({ data: date }),
     staleTime: 30_000,
-    refetchInterval: 60_000, // keep the grid fresh; the worker repolls every 60s
+    refetchInterval: 5 * 60_000, // keep the grid fresh; the worker repolls every 5 min
   });

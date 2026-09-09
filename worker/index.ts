@@ -1,25 +1,8 @@
-import { initSchema } from "./db.js";
+import { initSchema, pool } from "./db.js";
 import { poll } from "./poll.js";
 
-const POLL_MS = Number(process.env.POLL_MS ?? 60000);
-
-let running = false;
-async function tick(): Promise<void> {
-  if (running) {
-    console.log("[tick] previous poll still running, skipping");
-    return;
-  }
-  running = true;
-  try {
-    await poll();
-  } catch (e) {
-    console.error("[poll] failed:", e);
-  } finally {
-    running = false;
-  }
-}
-
+// Railway cron service: poll once, then exit so nothing is billed between runs.
+// A throw exits non-zero and the run shows as failed; the next tick starts clean.
 await initSchema();
-console.log(`[worker] started — polling every ${POLL_MS}ms, horizon ${process.env.HORIZON_DAYS ?? 14}d`);
-await tick();
-setInterval(tick, POLL_MS);
+await poll();
+await pool.end();
