@@ -5,7 +5,8 @@ WORKDIR /app
 # install deps first (better layer caching); official glibc image resolves the
 # correct linux-x64-gnu native bindings (rolldown, lightningcss)
 COPY package.json ./
-RUN npm install --no-audit --no-fund
+# ponytail: npm 10 (bundled with node 22) crashes in arborist #loadPeerSet on this tree
+RUN npm i -g npm@11 && npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build
