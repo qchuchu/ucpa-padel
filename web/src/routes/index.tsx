@@ -25,11 +25,18 @@ export const Route = createFileRoute('/')({
   validateSearch: (s: Record<string, unknown>): { date?: string } => ({
     date: typeof s.date === 'string' ? s.date : undefined,
   }),
-  loaderDeps: ({ search }) => ({ date: search.date ?? todayParis() }),
+  loaderDeps: ({ search }) => ({ date: clampDate(search.date) }),
   loader: ({ context, deps }) =>
     context.queryClient.ensureQueryData(slotsQueryOptions(deps.date)),
   component: Home,
 })
+
+function clampDate(date?: string): string {
+  const today = todayParis()
+  const max = addDays(today, HORIZON_DAYS)
+  if (!date || date < today) return today
+  return date > max ? max : date
+}
 
 type Row = { start: string; cells: Record<string, Array<Offer>> }
 
@@ -45,7 +52,7 @@ const HOUR_OPTIONS = Array.from({ length: 19 }, (_, i) => 6 + i) // 6h..24h
 function Home() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
-  const date = search.date ?? todayParis()
+  const date = clampDate(search.date)
   const { data: offers } = useSuspenseQuery(slotsQueryOptions(date))
 
   const [durations, setDurations] = useLocalStorage<Array<number>>(
