@@ -15,7 +15,7 @@ type Watch = {
   duration?: number | number[] | null;
 };
 
-const HORIZON_DAYS = Number(process.env.HORIZON_DAYS ?? 14);
+const HORIZON_DAYS = Number(process.env.HORIZON_DAYS ?? 42);
 const WEBHOOK = process.env.SLACK_WEBHOOK_URL;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

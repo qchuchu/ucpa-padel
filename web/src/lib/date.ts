@@ -1,4 +1,4 @@
-export const HORIZON_DAYS = 14;
+export const HORIZON_DAYS = 42;
 
 // Data dates are keyed YYYY-MM-DD; default the view to "today" in Paris.
 export function todayParis(): string {

@@ -85,7 +85,7 @@ export function filterByDuration(slots: SlotGroup[], want: number | null): SlotG
 // synthetic 2h offers stitched from two consecutive 1h bookings (bookingUrls set).
 // `scanned` holds the `club|date` pairs whose fetch succeeded — callers use it to
 // tell a genuinely-gone slot from one whose club just failed this cycle.
-// Memoizes UCPA's weekly response so a 14-day horizon = 2 weekly fetches, not 14.
+// Memoizes UCPA's weekly response so a 7-day span = 1 weekly fetch, not 7.
 export async function fetchAvailable(
   dates: string[]
 ): Promise<{ offers: PolledOffer[]; scanned: Set<string> }> {
